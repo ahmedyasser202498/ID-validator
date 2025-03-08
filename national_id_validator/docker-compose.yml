@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  validator:
+    build: .
+    command: ["sh", "-c", "python manage.py migrate && python manage.py generate_api_key && python manage.py runserver 0.0.0.0:8000"]
+    volumes:
+      - .:/app  # Mount the entire project folder to /app in the container
+    ports:
+      - "8000:8000"
+    networks:
+      - elk_network
+    environment:
+      - LOGSTASH_HOST=logstash
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    environment:
+      - discovery.type=single-node
+      - ELASTICSEARCH_PASSWORD=elastic
+      - ELASTICSEARCH_USERNAME=elastic
+    ports:
+      - "9200:9200"
+    networks:
+      - elk_network
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.10.1
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    networks:
+      - elk_network
+    volumes:
+      - ./logs/django.log:/home/logstash/django.log  # You can remove this now, as Filebeat will handle the log forwarding
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - xpack.monitoring.enabled=false  # Disable monitoring if you don't need it
+      - http.host=0.0.0.0   # Enable HTTP API on all interfaces
+      - http.port=9600       # Set the port for the HTTP API
+    user: root
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.10.1
+    ports:
+      - "5601:5601"
+    networks:
+      - elk_network
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:7.10.1
+    user: root
+    volumes:
+      - ./logs/django.log:/var/log/django.log  # Ensure the log file is accessible by Filebeat
+      - ./filebeat.yml:/etc/filebeat/filebeat.yml  # Mount the Filebeat configuration file
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - LOGSTASH_HOST=logstash
+    networks:
+      - elk_network
+
+networks:
+  elk_network:
+    driver: bridge
+
+volumes:
+  elasticsearch_data:
+    driver: local

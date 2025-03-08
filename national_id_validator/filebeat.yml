@@ -1,0 +1,8 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/django.log  # Path to the log file in the container
+
+output.logstash:
+  hosts: ["logstash:5044"]  # Logstash service name and port
